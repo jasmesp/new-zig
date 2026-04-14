@@ -1,50 +1,59 @@
-//! Zig 0.16.0 I/O-as-an-Interface challenges.
+//! Zig 0.16.0 I/O-as-an-Interface workbook.
 //!
-//! How to use this like Rustlings:
-//! 1. Run `zig build test` once. Everything should pass.
-//! 2. Change `show_answer_key` below to `false`.
-//! 3. Run `zig build test` again.
-//! 4. Replace each `hole(...)` call with your own code, one exercise at a time.
+//! This file is intentionally shaped like a small workbook instead of a
+//! scavenger hunt. Each exercise has a named `challenge_*` function, typed
+//! arguments, and a comment prompt that tells you what to practice.
 //!
-//! The release-note idea to keep in your head: in Zig 0.16, anything that may
-//! block, touch the outside world, or introduce nondeterminism is routed through
-//! a `std.Io` value chosen by the application.
+//! The reference implementations are filled in so the project has a clean
+//! baseline. To practice, pick a challenge, cover or delete the implementation
+//! under the prompt, write your own version, and run `zig build test`.
+//!
+//! Big idea from the Zig 0.16.0 release notes: anything that may block, touch
+//! the outside world, or introduce nondeterminism is routed through a `std.Io`
+//! value chosen by the application.
 
 const std = @import("std");
 const Io = std.Io;
+const Allocator = std.mem.Allocator;
 
-pub const show_answer_key = true;
-
-fn hole(comptime T: type, answer: T, comptime hint: []const u8) T {
-    if (show_answer_key) return answer;
-    @compileError("challenge hole: " ++ hint);
-}
-
-// Exercise 01: pass writers, not globals.
+// Challenge 1: Write to an Io.Writer
 //
-// Before 0.16, many examples reached for global stdout-ish helpers. The 0.16
-// shape is: reusable code accepts an `*Io.Writer`; the application decides
-// whether that writer points at stdout, a file, a buffer, a socket, or a test.
-pub fn writeBadge(writer: *Io.Writer, name: []const u8) Io.Writer.Error!void {
+// Write exactly this text into `writer`, using the provided name:
+//
+//   zig-0.16/io:writer
+//
+// Why this matters:
+// Reusable Zig 0.16 code should usually accept `*Io.Writer` instead of
+// reaching for a global stdout. The caller decides whether this writes to a
+// terminal, file, socket, buffer, or test harness.
+pub fn challenge_01_write_badge(writer: *Io.Writer, name: []const u8) Io.Writer.Error!void {
     try writer.print("zig-0.16/io:{s}", .{name});
 }
 
-test "01 writer interfaces make output testable" {
-    const name = hole([]const u8, "writer", "pass the badge name as a slice");
-
+test "01 write to an Io.Writer" {
     var buffer: [64]u8 = undefined;
     var writer: Io.Writer = .fixed(&buffer);
-    try writeBadge(&writer, name);
+
+    try challenge_01_write_badge(&writer, "writer");
 
     try std.testing.expectEqualStrings("zig-0.16/io:writer", writer.buffered());
 }
 
-// Exercise 02: fixed readers and writers replace old stream wrappers.
+// Challenge 2: Fixed readers and fixed writers
 //
-// The release notes call out that GenericReader, AnyReader, and
-// FixedBufferStream are gone. The tiny in-memory examples now use
+// Read every byte from `reader`, uppercase ASCII letters, and write the result
+// to `writer`.
+//
+// Expected behavior:
+//
+//   input:  "new io"
+//   output: "NEW IO"
+//
+// Why this matters:
+// Zig 0.16 removed old stream wrapper names such as FixedBufferStream,
+// GenericReader, and AnyReader. Small in-memory examples now use
 // `Io.Reader.fixed` and `Io.Writer.fixed` directly.
-pub fn echoUpper(reader: *Io.Reader, writer: *Io.Writer) !void {
+pub fn challenge_02_echo_upper(reader: *Io.Reader, writer: *Io.Writer) !void {
     while (true) {
         const byte = reader.takeByte() catch |err| switch (err) {
             error.EndOfStream => return,
@@ -55,40 +64,54 @@ pub fn echoUpper(reader: *Io.Reader, writer: *Io.Writer) !void {
 }
 
 test "02 fixed reader plus fixed writer" {
-    var reader: Io.Reader = .fixed(hole([]const u8, "new io", "feed the fixed reader"));
-
+    var reader: Io.Reader = .fixed("new io");
     var buffer: [16]u8 = undefined;
     var writer: Io.Writer = .fixed(&buffer);
-    try echoUpper(&reader, &writer);
+
+    try challenge_02_echo_upper(&reader, &writer);
 
     try std.testing.expectEqualStrings("NEW IO", writer.buffered());
 }
 
-// Exercise 03: `std.testing.io` is a real `std.Io`.
+// Challenge 3: Use the test Io implementation
 //
-// Unit tests in 0.16 get an initialized threaded I/O implementation from
-// `std.testing.io`. That makes tests able to exercise APIs that require `Io`
-// without inventing an application `main`.
-pub fn cancellationCheckpoint(io: Io) Io.Cancelable!void {
+// Return the `std.Io` value that Zig provides inside tests.
+//
+// Expected behavior:
+// The returned value can be passed to functions that require `Io`, such as a
+// cancellation checkpoint.
+//
+// Why this matters:
+// In Zig 0.16, library code takes an `Io` parameter. Tests can pass
+// `std.testing.io` instead of building their own application runtime.
+pub fn challenge_03_testing_io() Io {
+    return std.testing.io;
+}
+
+fn cancellationCheckpoint(io: Io) Io.Cancelable!void {
     try io.checkCancel();
 }
 
-test "03 test code can accept std.Io too" {
-    const io = hole(Io, std.testing.io, "use std.testing.io inside tests");
-    try cancellationCheckpoint(io);
+test "03 std.testing.io is a real Io" {
+    try cancellationCheckpoint(challenge_03_testing_io());
 }
 
-// Exercise 04: entropy is owned by Io.
+// Challenge 4: Random bytes come from Io
 //
-// `std.crypto.random.bytes(&buf)` becomes `io.random(&buf)`. If you need the
-// `std.Random` interface, adapt the same `Io` with `std.Random.IoSource`.
-pub fn fillToken(io: Io, token: *[8]u8) void {
+// Fill `token` with random bytes using the provided `io`.
+//
+// Why this matters:
+// The old mental model of "ask a global random source" is not the 0.16 shape.
+// Randomness is nondeterministic, so it belongs to the selected `Io`
+// implementation.
+pub fn challenge_04_fill_token(io: Io, token: *[8]u8) void {
     io.random(token);
 }
 
-test "04 entropy comes from the selected Io implementation" {
-    var token = hole([8]u8, [_]u8{0} ** 8, "initialize the token buffer");
-    fillToken(std.testing.io, &token);
+test "04 randomness comes from the selected Io implementation" {
+    var token = [_]u8{0} ** 8;
+
+    challenge_04_fill_token(std.testing.io, &token);
 
     var source: std.Random.IoSource = .{ .io = std.testing.io };
     const rng = source.interface();
@@ -98,109 +121,159 @@ test "04 entropy comes from the selected Io implementation" {
     try std.testing.expect(random_byte <= std.math.maxInt(u8));
 }
 
-// Exercise 05: clocks and durations moved under Io.
+// Challenge 5: Read time through Io
 //
-// The new names are deliberately explicit: `Io.Timestamp`, `Io.Duration`,
-// and `Io.Clock`. Wall-clock timestamps are nondeterministic, so they are read
-// through the chosen `Io` implementation.
-pub fn elapsedAwake(io: Io, start: Io.Timestamp) Io.Duration {
+// Return the elapsed awake-clock duration from `start` until now.
+//
+// Why this matters:
+// Time is nondeterministic. Zig 0.16 makes that visible with `Io.Timestamp`,
+// `Io.Duration`, and `Io.Clock`, all read through the selected `Io`.
+pub fn challenge_05_elapsed_awake(io: Io, start: Io.Timestamp) Io.Duration {
     return start.untilNow(io, .awake);
 }
 
 test "05 time is read through Io" {
-    const start = hole(Io.Timestamp, Io.Timestamp.now(std.testing.io, .awake), "capture an Io timestamp");
-    const elapsed = elapsedAwake(std.testing.io, start);
+    const start = Io.Timestamp.now(std.testing.io, .awake);
+    const elapsed = challenge_05_elapsed_awake(std.testing.io, start);
 
     const one_ms = Io.Duration.fromMilliseconds(1);
     try std.testing.expect(elapsed.toNanoseconds() >= 0);
     try std.testing.expectEqual(@as(i64, 1), one_ms.toMilliseconds());
 }
 
-// Exercise 06: futures are function-level async.
-//
-// `Io.async` may run the function now or later; `future.await(io)` is the point
-// where you commit to observing the result. Use this for ergonomic task-level
-// independence. Reach for `Io.Batch` later when you need lower overhead over
-// raw operations.
 fn addLater(a: u32, b: u32) u32 {
     return a + b;
 }
 
-test "06 async returns a future that must be awaited" {
-    var future = Io.async(std.testing.io, addLater, .{
-        hole(u32, 19, "first addend"),
-        hole(u32, 23, "second addend"),
-    });
-
-    try std.testing.expectEqual(@as(u32, 42), future.await(std.testing.io));
+// Challenge 6: Await a future
+//
+// Use `Io.async` to call `addLater` with `a` and `b`, then await the future and
+// return the result.
+//
+// Expected behavior:
+// Calling this with 19 and 23 returns 42.
+//
+// Why this matters:
+// `Io.async` gives a function-level future. The work may run now or later; the
+// future's `await(io)` is where you observe the result.
+pub fn challenge_06_add_with_future(io: Io, a: u32, b: u32) u32 {
+    var future = Io.async(io, addLater, .{ a, b });
+    return future.await(io);
 }
 
-// Exercise 07: groups are wait-groups with Io semantics.
-//
-// The 0.16 replacement for `std.Thread.WaitGroup` is `std.Io.Group`. It can be
-// awaited or canceled as a whole, and the chosen `Io` implementation decides
-// what "blocking" means.
+test "06 async returns a future that can be awaited" {
+    try std.testing.expectEqual(@as(u32, 42), challenge_06_add_with_future(std.testing.io, 19, 23));
+}
+
 fn bumpCounter(counter: *std.atomic.Value(u32), amount: u32) Io.Cancelable!void {
     _ = counter.fetchAdd(amount, .monotonic);
 }
 
+// Challenge 7: Gather tasks with Io.Group
+//
+// Spawn two grouped tasks. Each task should add one amount to `counter`.
+// Await the group before returning.
+//
+// Expected behavior:
+// Calling this with 20 and 22 leaves the counter at 42.
+//
+// Why this matters:
+// `std.Io.Group` is the 0.16 task-group / wait-group shape. A group is awaited
+// or canceled as a whole, and the selected `Io` decides how waiting works.
+pub fn challenge_07_bump_with_group(
+    io: Io,
+    counter: *std.atomic.Value(u32),
+    first_amount: u32,
+    second_amount: u32,
+) Io.Cancelable!void {
+    var group: Io.Group = .init;
+    group.async(io, bumpCounter, .{ counter, first_amount });
+    group.async(io, bumpCounter, .{ counter, second_amount });
+    try group.await(io);
+}
+
 test "07 groups gather independent tasks" {
     var counter: std.atomic.Value(u32) = .init(0);
-    var group: Io.Group = .init;
 
-    group.async(std.testing.io, bumpCounter, .{ &counter, hole(u32, 20, "first task amount") });
-    group.async(std.testing.io, bumpCounter, .{ &counter, hole(u32, 22, "second task amount") });
-    try group.await(std.testing.io);
+    try challenge_07_bump_with_group(std.testing.io, &counter, 20, 22);
 
     try std.testing.expectEqual(@as(u32, 42), counter.load(.monotonic));
 }
 
-// Exercise 08: queues are typed, blocking, cancelable coordination points.
+// Challenge 8: Round-trip one item through an Io.Queue
 //
-// `Io.Queue(T)` is many-producer/many-consumer. Even in this tiny test, notice
-// that the queue methods take `io`; a full or empty queue may need to block.
-test "08 queues coordinate through Io" {
+// Create a small `Io.Queue(u8)`, put `item` into it, get one item back, close
+// the queue, and return the item you received.
+//
+// Why this matters:
+// Queues can block when full or empty, so the queue operations take `io`.
+pub fn challenge_08_round_trip_queue(io: Io, item: u8) !u8 {
     var storage: [2]u8 = undefined;
     var queue: Io.Queue(u8) = .init(&storage);
 
-    try queue.putOne(std.testing.io, hole(u8, 'Z', "queue one byte"));
-    try std.testing.expectEqual(@as(u8, 'Z'), try queue.getOne(std.testing.io));
-
-    queue.close(std.testing.io);
-    try std.testing.expectError(error.Closed, queue.getOne(std.testing.io));
+    try queue.putOne(io, item);
+    const received = try queue.getOne(io);
+    queue.close(io);
+    return received;
 }
 
-// Exercise 09: sync primitives moved under Io.
+test "08 queues coordinate through Io" {
+    try std.testing.expectEqual(@as(u8, 'Z'), try challenge_08_round_trip_queue(std.testing.io, 'Z'));
+}
+
+// Challenge 9: Protect shared state, then signal an event
 //
-// `std.Io.Mutex`, `std.Io.Event`, `std.Io.Condition`, `std.Io.Semaphore`, and
-// friends integrate with the same blocking/cancelation model as the rest of
-// I/O. Lock-free atomics still do not need `Io`.
+// Lock `mutex`, write `new_value` into `value`, unlock the mutex, set `event`,
+// and wait for the event.
+//
+// Expected behavior:
+// After this function returns, `value.*` equals `new_value` and the event is set.
+//
+// Why this matters:
+// Zig 0.16 synchronization primitives such as `Io.Mutex`, `Io.Event`, and
+// `Io.Condition` participate in the same blocking/cancellation model as I/O.
+pub fn challenge_09_set_value_and_signal(
+    io: Io,
+    mutex: *Io.Mutex,
+    event: *Io.Event,
+    value: *u32,
+    new_value: u32,
+) Io.Cancelable!void {
+    try mutex.lock(io);
+    value.* = new_value;
+    mutex.unlock(io);
+
+    event.set(io);
+    try event.wait(io);
+}
+
 test "09 mutex and event operations participate in Io" {
     var mutex: Io.Mutex = .init;
+    var event: Io.Event = .unset;
     var protected_value: u32 = 0;
 
-    try mutex.lock(std.testing.io);
-    protected_value = hole(u32, 42, "write the protected value while locked");
-    mutex.unlock(std.testing.io);
-
-    var event: Io.Event = .unset;
-    try std.testing.expect(!event.isSet());
-    event.set(std.testing.io);
-    try event.wait(std.testing.io);
+    try challenge_09_set_value_and_signal(std.testing.io, &mutex, &event, &protected_value, 42);
 
     try std.testing.expect(event.isSet());
     try std.testing.expectEqual(@as(u32, 42), protected_value);
 }
 
-// Exercise 10: filesystem calls now take Io.
+// Challenge 10: Filesystem APIs take Io
 //
-// The release-note migration pattern is intentionally repetitive:
-// `file.close()` becomes `file.close(io)`, opening/creating/deleting via
-// `Io.Dir` takes `io`, and file readers/writers are also bound to `io`.
-pub fn writeThenReadFile(
+// Create or truncate `path` inside `dir`, write `contents`, flush the file
+// writer, close the file, then read the file back into an allocated buffer.
+//
+// Expected behavior:
+// The returned bytes match `contents`. The caller owns the returned allocation.
+//
+// Why this matters:
+// In Zig 0.16, filesystem operations are explicit about I/O:
+// `dir.createFile(io, ...)`, `file.close(io)`, `file.writer(io, ...)`,
+// `dir.readFileAlloc(io, ...)`, and so on.
+pub fn challenge_10_write_then_read_file(
     io: Io,
     dir: Io.Dir,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     path: []const u8,
     contents: []const u8,
 ) ![]u8 {
@@ -215,15 +288,15 @@ pub fn writeThenReadFile(
     return try dir.readFileAlloc(io, path, allocator, .limited(1024));
 }
 
-test "10 fs APIs receive Io explicitly" {
+test "10 filesystem APIs receive Io explicitly" {
     const io = std.testing.io;
     const allocator = std.testing.allocator;
-    const path = hole([]const u8, "zig-0.16-io-challenge.tmp", "choose a temp file name");
+    const path = "zig-0.16-io-challenge.tmp";
 
     const cwd = Io.Dir.cwd();
     defer cwd.deleteFile(io, path) catch {};
 
-    const bytes = try writeThenReadFile(io, cwd, allocator, path, "explicit io everywhere");
+    const bytes = try challenge_10_write_then_read_file(io, cwd, allocator, path, "explicit io everywhere");
     defer allocator.free(bytes);
 
     try std.testing.expectEqualStrings("explicit io everywhere", bytes);
