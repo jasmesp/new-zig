@@ -61,7 +61,7 @@ test "01 write to an Io.Writer" {
 pub fn challenge_02_echo_upper(reader: *Io.Reader, writer: *Io.Writer) !void {
     // var in = .fixed(reader);
     const buf = reader.takeByte();
-    const sel = std.ascii.toUpper(&buf);
+    const sel = std.ascii.toUpper(buf);
 
     try writer.writeByte(sel);
 
