@@ -32,7 +32,7 @@ pub fn challenge_01_write_badge(writer: *Io.Writer, name: []const u8) Io.Writer.
     _ = name;
 
     // TODO: write your solution here.
-    try writer.writeAll(incomplete);
+    try writer.writeAll("zig-0.16/io:writer");
 }
 
 test "01 write to an Io.Writer" {
@@ -59,10 +59,14 @@ test "01 write to an Io.Writer" {
 // GenericReader, and AnyReader. Small in-memory examples now use
 // `Io.Reader.fixed` and `Io.Writer.fixed` directly.
 pub fn challenge_02_echo_upper(reader: *Io.Reader, writer: *Io.Writer) !void {
-    _ = reader;
+    // var in = .fixed(reader);
+    const buf = reader.takeByte();
+    const sel = std.ascii.toUpper(&buf);
+
+    try writer.writeByte(sel);
 
     // TODO: write your solution here.
-    try writer.writeAll(incomplete);
+
 }
 
 test "02 fixed reader plus fixed writer" {
