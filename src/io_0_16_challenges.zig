@@ -4,9 +4,9 @@
 //! scavenger hunt. Each exercise has a named `challenge_*` function, typed
 //! arguments, and a comment prompt that tells you what to practice.
 //!
-//! The reference implementations are filled in so the project has a clean
-//! baseline. To practice, pick a challenge, cover or delete the implementation
-//! under the prompt, write your own version, and run `zig build test`.
+//! Each function starts with an intentionally wrong `incomplete` implementation
+//! so the file compiles before you begin. Replace one function body at a time,
+//! then run `zig build test` to see whether that challenge is solved.
 //!
 //! Big idea from the Zig 0.16.0 release notes: anything that may block, touch
 //! the outside world, or introduce nondeterminism is routed through a `std.Io`
@@ -15,6 +15,8 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+
+const incomplete = "incomplete";
 
 // Challenge 1: Write to an Io.Writer
 //
@@ -27,7 +29,10 @@ const Allocator = std.mem.Allocator;
 // reaching for a global stdout. The caller decides whether this writes to a
 // terminal, file, socket, buffer, or test harness.
 pub fn challenge_01_write_badge(writer: *Io.Writer, name: []const u8) Io.Writer.Error!void {
-    try writer.print("zig-0.16/io:{s}", .{name});
+    _ = name;
+
+    // TODO: write your solution here.
+    try writer.writeAll(incomplete);
 }
 
 test "01 write to an Io.Writer" {
@@ -54,13 +59,10 @@ test "01 write to an Io.Writer" {
 // GenericReader, and AnyReader. Small in-memory examples now use
 // `Io.Reader.fixed` and `Io.Writer.fixed` directly.
 pub fn challenge_02_echo_upper(reader: *Io.Reader, writer: *Io.Writer) !void {
-    while (true) {
-        const byte = reader.takeByte() catch |err| switch (err) {
-            error.EndOfStream => return,
-            else => |e| return e,
-        };
-        try writer.writeByte(std.ascii.toUpper(byte));
-    }
+    _ = reader;
+
+    // TODO: write your solution here.
+    try writer.writeAll(incomplete);
 }
 
 test "02 fixed reader plus fixed writer" {
@@ -85,15 +87,14 @@ test "02 fixed reader plus fixed writer" {
 // In Zig 0.16, library code takes an `Io` parameter. Tests can pass
 // `std.testing.io` instead of building their own application runtime.
 pub fn challenge_03_testing_io() Io {
-    return std.testing.io;
-}
-
-fn cancellationCheckpoint(io: Io) Io.Cancelable!void {
-    try io.checkCancel();
+    // TODO: write your solution here.
+    return Io.Threaded.global_single_threaded.io();
 }
 
 test "03 std.testing.io is a real Io" {
-    try cancellationCheckpoint(challenge_03_testing_io());
+    const actual = challenge_03_testing_io();
+
+    try std.testing.expect(actual.userdata == std.testing.io.userdata);
 }
 
 // Challenge 4: Random bytes come from Io
@@ -105,7 +106,10 @@ test "03 std.testing.io is a real Io" {
 // Randomness is nondeterministic, so it belongs to the selected `Io`
 // implementation.
 pub fn challenge_04_fill_token(io: Io, token: *[8]u8) void {
-    io.random(token);
+    _ = io;
+    _ = token;
+
+    // TODO: write your solution here.
 }
 
 test "04 randomness comes from the selected Io implementation" {
@@ -118,6 +122,7 @@ test "04 randomness comes from the selected Io implementation" {
     const random_byte = rng.int(u8);
 
     try std.testing.expect(token.len == 8);
+    try std.testing.expect(!std.mem.eql(u8, &token, &([_]u8{0} ** 8)));
     try std.testing.expect(random_byte <= std.math.maxInt(u8));
 }
 
@@ -129,15 +134,19 @@ test "04 randomness comes from the selected Io implementation" {
 // Time is nondeterministic. Zig 0.16 makes that visible with `Io.Timestamp`,
 // `Io.Duration`, and `Io.Clock`, all read through the selected `Io`.
 pub fn challenge_05_elapsed_awake(io: Io, start: Io.Timestamp) Io.Duration {
-    return start.untilNow(io, .awake);
+    _ = io;
+    _ = start;
+
+    // TODO: write your solution here.
+    return .zero;
 }
 
 test "05 time is read through Io" {
-    const start = Io.Timestamp.now(std.testing.io, .awake);
+    const start = Io.Timestamp.zero;
     const elapsed = challenge_05_elapsed_awake(std.testing.io, start);
 
     const one_ms = Io.Duration.fromMilliseconds(1);
-    try std.testing.expect(elapsed.toNanoseconds() >= 0);
+    try std.testing.expect(elapsed.toNanoseconds() > 0);
     try std.testing.expectEqual(@as(i64, 1), one_ms.toMilliseconds());
 }
 
@@ -157,8 +166,12 @@ fn addLater(a: u32, b: u32) u32 {
 // `Io.async` gives a function-level future. The work may run now or later; the
 // future's `await(io)` is where you observe the result.
 pub fn challenge_06_add_with_future(io: Io, a: u32, b: u32) u32 {
-    var future = Io.async(io, addLater, .{ a, b });
-    return future.await(io);
+    _ = io;
+    _ = a;
+    _ = b;
+
+    // TODO: write your solution here.
+    return 0;
 }
 
 test "06 async returns a future that can be awaited" {
@@ -186,10 +199,12 @@ pub fn challenge_07_bump_with_group(
     first_amount: u32,
     second_amount: u32,
 ) Io.Cancelable!void {
-    var group: Io.Group = .init;
-    group.async(io, bumpCounter, .{ counter, first_amount });
-    group.async(io, bumpCounter, .{ counter, second_amount });
-    try group.await(io);
+    _ = io;
+    _ = counter;
+    _ = first_amount;
+    _ = second_amount;
+
+    // TODO: write your solution here.
 }
 
 test "07 groups gather independent tasks" {
@@ -208,13 +223,11 @@ test "07 groups gather independent tasks" {
 // Why this matters:
 // Queues can block when full or empty, so the queue operations take `io`.
 pub fn challenge_08_round_trip_queue(io: Io, item: u8) !u8 {
-    var storage: [2]u8 = undefined;
-    var queue: Io.Queue(u8) = .init(&storage);
+    _ = io;
+    _ = item;
 
-    try queue.putOne(io, item);
-    const received = try queue.getOne(io);
-    queue.close(io);
-    return received;
+    // TODO: write your solution here.
+    return 0;
 }
 
 test "08 queues coordinate through Io" {
@@ -239,12 +252,13 @@ pub fn challenge_09_set_value_and_signal(
     value: *u32,
     new_value: u32,
 ) Io.Cancelable!void {
-    try mutex.lock(io);
-    value.* = new_value;
-    mutex.unlock(io);
+    _ = io;
+    _ = mutex;
+    _ = event;
+    _ = value;
+    _ = new_value;
 
-    event.set(io);
-    try event.wait(io);
+    // TODO: write your solution here.
 }
 
 test "09 mutex and event operations participate in Io" {
@@ -277,15 +291,13 @@ pub fn challenge_10_write_then_read_file(
     path: []const u8,
     contents: []const u8,
 ) ![]u8 {
-    var file = try dir.createFile(io, path, .{ .truncate = true });
-    defer file.close(io);
+    _ = io;
+    _ = dir;
+    _ = path;
+    _ = contents;
 
-    var write_buffer: [64]u8 = undefined;
-    var file_writer = file.writer(io, &write_buffer);
-    try file_writer.interface.writeAll(contents);
-    try file_writer.interface.flush();
-
-    return try dir.readFileAlloc(io, path, allocator, .limited(1024));
+    // TODO: write your solution here.
+    return try allocator.dupe(u8, incomplete);
 }
 
 test "10 filesystem APIs receive Io explicitly" {

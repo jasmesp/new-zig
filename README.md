@@ -6,7 +6,8 @@ Zig test command.
 
 The style is intentionally plain: each exercise is a named `challenge_*`
 function with typed arguments, a short tutorial comment, and a test that shows
-the expected behavior.
+the expected behavior. The student-facing file contains stubs, not visible
+solutions.
 
 ## How To Use It
 
@@ -26,7 +27,7 @@ the expected behavior.
    - what output or behavior is expected
    - why the API matters in Zig 0.16
 
-5. Cover, delete, or ignore the reference implementation inside that function.
+5. Replace the `incomplete` stub inside that function.
 
 6. Write your own implementation using the function name and arguments already
    provided.
@@ -39,6 +40,9 @@ the expected behavior.
 
 8. Keep iterating until the test for that challenge passes, then move to the
    next one.
+
+The initial workbook is expected to compile but fail challenge tests. That is
+the point: each failing test is a little signpost for the next function to fix.
 
 ## What The Exercises Cover
 
@@ -64,3 +68,8 @@ world, or introduce nondeterminism is routed through an application-selected
 shape of these Zig challenges: clear prompts, named challenge functions, and a
 simple expected-behavior harness.
 
+## Solution Key
+
+`src/io_0_16_solutions.zig` contains reference implementations. It is kept
+separate from `src/io_0_16_challenges.zig` so students can work in the workbook
+without answers sitting directly under the prompts.
